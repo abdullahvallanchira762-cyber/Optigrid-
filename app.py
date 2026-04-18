@@ -1,5 +1,5 @@
 """
-EnergyIQ — ML Occupancy Prediction & Energy Optimization Backend
+Optigrid — ML Occupancy Prediction & Energy Optimization Backend
 Run: python app.py
 Then open: http://localhost:5000
 """
