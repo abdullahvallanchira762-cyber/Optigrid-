@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Optigrid — ML Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  :root {
+    --bg:#0d0f14; --surface:#13161e; --surface2:#1a1e28;
+    --border:rgba(255,255,255,0.07); --border2:rgba(255,255,255,0.13);
+    --text:#e8eaf0; --muted:#6b7280;
+    --green:#4ade80; --blue:#38bdf8; --orange:#fb923c;
+    --purple:#a78bfa; --red:#f87171; --yellow:#fbbf24;
+    --mono:'DM Mono',monospace; --sans:'Syne',sans-serif;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;min-height:100vh;overflow-x:hidden}
+  body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.025) 2px,rgba(0,0,0,0.025) 4px);pointer-events:none;z-index:9999}
+
+  /* SIDEBAR */
+  .sidebar{position:fixed;top:0;left:0;bottom:0;width:220px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:100}
+  .logo{padding:24px 20px 18px;border-bottom:1px solid var(--border)}
+  .logo-mark{display:flex;align-items:center;gap:10px}
+  .logo-icon{width:32px;height:32px;background:var(--green);border-radius:8px;display:flex;align-items:center;justify-content:center}
+  .logo-icon svg{width:18px;height:18px}
+  .logo-name{font-size:17px;font-weight:700;letter-spacing:-.5px}
+  .logo-name span{color:var(--green)}
+  .nav{padding:14px 10px;flex:1}
+  .nav-section{font-size:10px;font-family:var(--mono);color:var(--muted);letter-spacing:.1em;text-transform:uppercase;padding:0 10px;margin:14px 0 5px}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;color:var(--muted);font-size:13px;cursor:pointer;transition:background .15s,color .15s;user-select:none}
+  .nav-item:hover{background:var(--surface2);color:var(--text)}
+  .nav-item.active{background:rgba(74,222,128,.1);color:var(--green)}
+  .nav-item svg{width:15px;height:15px;flex-shrink:0}
+  .sidebar-footer{padding:14px 20px;border-top:1px solid var(--border);font-size:11px;font-family:var(--mono);color:var(--muted)}
+  .live-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--green);margin-right:6px;animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+  /* MAIN */
+  .main{margin-left:220px;min-height:100vh;display:flex;flex-direction:column}
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:18px 28px;border-bottom:1px solid var(--border);background:var(--surface);position:sticky;top:0;z-index:50;gap:12px;flex-wrap:wrap}
+  .topbar-title h1{font-size:19px;font-weight:700;letter-spacing:-.5px}
+  .topbar-title p{font-size:11px;color:var(--muted);font-family:var(--mono);margin-top:2px}
+  .topbar-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+
+  /* UPLOAD ZONE */
+  .upload-zone{border:1.5px dashed var(--border2);border-radius:12px;padding:32px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;margin-bottom:22px}
+  .upload-zone:hover,.upload-zone.drag{border-color:var(--green);background:rgba(74,222,128,.04)}
+  .upload-zone.done{border-color:var(--green);border-style:solid}
+  .upload-zone input{display:none}
+  .upload-title{font-size:15px;font-weight:500;margin-bottom:6px}
+  .upload-sub{font-size:12px;color:var(--muted);font-family:var(--mono)}
+
+  /* STATUS BAR */
+  .status-bar{display:flex;align-items:center;gap:10px;padding:10px 16px;border-radius:10px;font-size:12px;font-family:var(--mono);margin-bottom:20px;border:1px solid var(--border)}
+  .status-bar.idle{background:var(--surface)}
+  .status-bar.training{background:rgba(251,146,60,.07);border-color:rgba(251,146,60,.3);color:var(--orange)}
+  .status-bar.ready{background:rgba(74,222,128,.07);border-color:rgba(74,222,128,.3);color:var(--green)}
+  .status-bar.error{background:rgba(248,113,113,.07);border-color:rgba(248,113,113,.3);color:var(--red)}
+  .status-dot2{width:7px;height:7px;border-radius:50%;background:currentColor;flex-shrink:0}
+
+  /* METRICS */
+  .metrics-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:20px}
+  .metric-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px;position:relative;overflow:hidden;transition:border-color .2s}
+  .metric-card:hover{border-color:var(--border2)}
+  .metric-label{font-size:10px;font-family:var(--mono);color:var(--muted);letter-spacing:.05em;margin-bottom:7px}
+  .metric-value{font-size:26px;font-weight:700;letter-spacing:-1px}
+  .metric-unit{font-size:13px;font-weight:400;color:var(--muted)}
+  .metric-sub{font-size:11px;color:var(--muted);margin-top:3px;font-family:var(--mono)}
+  .badge{display:inline-block;font-size:10px;font-family:var(--mono);padding:2px 7px;border-radius:4px;margin-top:5px}
+  .badge-green{background:rgba(74,222,128,.12);color:#4ade80}
+  .badge-blue{background:rgba(56,189,248,.12);color:#38bdf8}
+  .badge-orange{background:rgba(251,146,60,.12);color:#fb923c}
+  .badge-purple{background:rgba(167,139,250,.12);color:#a78bfa}
+
+  /* CONTROLS ROW */
+  .controls-row{display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap}
+  .ctrl-group{display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:8px 14px}
+  .ctrl-group label{font-size:11px;font-family:var(--mono);color:var(--muted)}
+  select,input[type=range]{background:transparent;border:none;outline:none;color:var(--text);font-family:var(--mono);font-size:12px;cursor:pointer}
+  select option{background:var(--surface2)}
+  input[type=range]{-webkit-appearance:none;width:120px;height:4px;background:var(--border2);border-radius:2px}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:var(--green);cursor:pointer}
+  .btn{background:var(--green);color:#0d0f14;border:none;border-radius:8px;padding:8px 14px;font-family:var(--mono);font-size:12px;font-weight:500;cursor:pointer;transition:opacity .15s}
+  .btn:hover{opacity:.85}
+  .btn.secondary{background:var(--surface2);color:var(--text);border:1px solid var(--border2)}
+  .hour-label{font-family:var(--mono);font-size:13px;font-weight:500;color:var(--green);min-width:44px}
+
+  /* TWO-COL */
+  .two-col{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:14px;margin-bottom:20px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px}
+  .card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+  .card-title{font-size:13px;font-weight:500}
+  .card-hint{font-size:11px;font-family:var(--mono);color:var(--muted)}
+
+  /* ZONE TABLE */
+  .zone-list{display:flex;flex-direction:column;gap:10px}
+  .zone-row{display:grid;grid-template-columns:110px 1fr 46px 72px;align-items:center;gap:10px}
+  .zone-name{font-size:12px;color:var(--text);font-family:var(--mono)}
+  .bar-track{height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden}
+  .bar-fill{height:100%;border-radius:3px;transition:width .5s ease}
+  .zone-pct{font-family:var(--mono);font-size:11px;color:var(--muted);text-align:right}
+  .hvac-pill{font-size:9px;font-family:var(--mono);padding:3px 7px;border-radius:4px;text-align:center;font-weight:500;letter-spacing:.04em}
+
+  /* LEGEND */
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px}
+  .legend-item{display:flex;align-items:center;gap:5px;font-size:11px;font-family:var(--mono);color:var(--muted)}
+  .legend-swatch{width:9px;height:9px;border-radius:2px;flex-shrink:0}
+
+  /* MODEL STATS */
+  .stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px}
+  .stat-card{background:var(--surface2);border-radius:8px;padding:12px}
+  .stat-zone{font-size:11px;font-family:var(--mono);color:var(--muted);margin-bottom:5px}
+  .stat-vals{display:flex;gap:12px}
+  .stat-val{font-size:12px;font-family:var(--mono)}
+
+  /* FULL CARD */
+  .full-card{margin-bottom:20px}
+
+  /* ALERT */
+  .alerts{margin-bottom:18px;display:flex;flex-direction:column;gap:7px}
+  .alert-row{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:10px 14px;font-size:12px;font-family:var(--mono)}
+  .alert-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+
+  /* CONTENT */
+  .content{padding:24px 28px;flex:1}
+
+  /* RESPONSIVE */
+  @media(max-width:1100px){.metrics-grid{grid-template-columns:repeat(2,1fr)}.two-col{grid-template-columns:1fr}}
+  @media(max-width:768px){.sidebar{width:56px}.sidebar .nav-item span,.logo-name,.nav-section,.sidebar-footer span{display:none}.main{margin-left:56px}.topbar,.content{padding-left:16px;padding-right:16px}.metrics-grid{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="logo">
+    <div class="logo-mark">
+      <div class="logo-icon">
+        <svg viewBox="0 0 18 18" fill="none"><path d="M9 2L15 5.5V12.5L9 16L3 12.5V5.5L9 2Z" stroke="#0d0f14" stroke-width="1.5" stroke-linejoin="round"/><path d="M9 7V11M7 9H11" stroke="#0d0f14" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </div>
+      <span class="logo-name">Optigr<span>id</span></span>
+    </div>
+  </div>
+  <nav class="nav">
+    <div class="nav-section">Overview</div>
+    <div class="nav-item active" id="nav-dashboard" onclick="showPage('dashboard')">
+      <svg viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1.5"/><rect x="9" y="1" width="6" height="6" rx="1.5"/><rect x="1" y="9" width="6" height="6" rx="1.5"/><rect x="9" y="9" width="6" height="6" rx="1.5"/></svg>
+      <span>Dashboard</span>
+    </div>
+    <div class="nav-item" id="nav-analytics" onclick="showPage('analytics')">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12L6 8L9 10L14 4"/></svg>
+      <span>Analytics</span>
+    </div>
+    <div class="nav-section">Model</div>
+    <div class="nav-item" onclick="document.getElementById('upload-input').click()">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 11V5M5 8l3-3 3 3"/><rect x="2" y="12" width="12" height="2" rx="1"/></svg>
+      <span>Upload CSV</span>
+    </div>
+    <div class="nav-item" id="stats-nav" style="display:none">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 2"/></svg>
+      <span>Model stats</span>
+    </div>
+  </nav>
+  <div class="sidebar-footer">
+    <span class="live-dot"></span><span>ML ENGINE</span>
+  </div>
+</aside>
+
+<main class="main">
+  <header class="topbar">
+    <div class="topbar-title">
+      <h1>OptiSense Dashboard</h1>
+      <p id="date-display"></p>
+    </div>
+    <div class="topbar-controls">
+      <div class="ctrl-group">
+        <label>DAY</label>
+        <select id="dow-select">
+          <option value="0">Monday</option><option value="1">Tuesday</option>
+          <option value="2">Wednesday</option><option value="3">Thursday</option>
+          <option value="4">Friday</option><option value="5">Saturday</option>
+          <option value="6">Sunday</option>
+        </select>
+      </div>
+      <div class="ctrl-group">
+        <label>HOUR</label>
+        <input type="range" id="hour-slider" min="0" max="23" value="9" step="1">
+        <span class="hour-label" id="hour-display">09:00</span>
+      </div>
+      <button class="btn" id="play-btn" onclick="togglePlay()">&#9654; PLAY</button>
+    </div>
+  </header>
+
+  <div class="content">
+
+    <!-- UPLOAD -->
+    <div class="upload-zone" id="upload-zone" onclick="document.getElementById('upload-input').click()">
+      <input type="file" id="upload-input" accept=".csv">
+      <div class="upload-title" id="upload-title">Upload your occupancy CSV to train the ML model</div>
+      <div class="upload-sub" id="upload-sub">required columns: hour, day_of_week, is_weekend, zone, zone_capacity, occupancy_pct &nbsp;·&nbsp; click or drag &amp; drop</div>
+    </div>
+
+    <!-- STATUS -->
+    <div class="status-bar idle" id="status-bar">
+      <span class="status-dot2"></span>
+      <span id="status-msg">No model trained — upload a CSV to begin</span>
+    </div>
+
+    <!-- ALERTS -->
+    <div class="alerts" id="alerts-container" style="display:none"></div>
+
+    <!-- METRICS -->
+    <div class="metrics-grid" id="metrics-grid" style="display:none"></div>
+
+    <!-- CONTROLS (zone picker) -->
+    <div class="controls-row" id="controls-row" style="display:none">
+      <div class="ctrl-group">
+        <label>ZONE</label>
+        <select id="zone-select"></select>
+      </div>
+      <div class="ctrl-group">
+        <label>CAPACITY</label>
+        <input type="number" id="zone-cap" value="80" min="1" max="500" style="width:60px;background:transparent;border:none;outline:none;color:var(--text);font-family:var(--mono);font-size:12px">
+      </div>
+      <button class="btn secondary" onclick="refreshDashboard()">&#8635; Refresh</button>
+    </div>
+
+    <!-- ZONE + ENERGY -->
+    <div class="two-col" id="main-charts" style="display:none">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Zone occupancy &amp; HVAC mode</span>
+          <span class="card-hint" id="prediction-label">ML predictions</span>
+        </div>
+        <div class="zone-list" id="zone-list"></div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Energy breakdown</span>
+          <span class="card-hint">kWh / hour</span>
+        </div>
+        <div style="position:relative;height:210px">
+          <canvas id="energy-chart" role="img" aria-label="Stacked bar chart of energy use per zone">Energy chart</canvas>
+        </div>
+        <div class="legend" id="energy-legend"></div>
+      </div>
+    </div>
+
+    <!-- FORECAST -->
+    <div class="full-card" id="forecast-section" style="display:none">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">24-hour ML forecast — <span id="forecast-zone-label">all zones avg</span></span>
+          <div class="legend">
+            <div class="legend-item"><span class="legend-swatch" style="background:#38bdf8"></span>Occupancy %</div>
+            <div class="legend-item"><span class="legend-swatch" style="background:#4ade80"></span>Savings %</div>
+          </div>
+        </div>
+        <div style="position:relative;height:170px">
+          <canvas id="forecast-chart" role="img" aria-label="24 hour occupancy and savings forecast">Forecast chart</canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- BOTTOM ROW -->
+    <div class="two-col" id="bottom-row" style="display:none">
+      <div class="card">
+        <div class="card-header"><span class="card-title">Model performance</span><span class="card-hint">per zone</span></div>
+        <div class="stats-grid" id="model-stats"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Cumulative savings today</span></div>
+        <div style="display:flex;flex-direction:column;gap:12px" id="savings-breakdown"></div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<!-- ═══════════════════════════════════════════════════════ ANALYTICS PAGE -->
+<main class="main" id="page-analytics" style="display:none">
+  <header class="topbar">
+    <div class="topbar-title">
+      <h1>Analytics</h1>
+      <p id="analytics-date"></p>
+    </div>
+    <div class="topbar-controls">
+      <div class="ctrl-group">
+        <label>RANGE</label>
+        <select id="analytics-range" onchange="loadAnalytics()">
+          <option value="7">Last 7 days</option>
+          <option value="14">Last 14 days</option>
+          <option value="30" selected>Last 30 days</option>
+          <option value="60">Last 60 days</option>
+        </select>
+      </div>
+      <button class="btn secondary" onclick="loadAnalytics()">&#8635; Refresh</button>
+    </div>
+  </header>
+
+  <div class="content">
+    <div id="analytics-no-model" class="status-bar idle" style="margin-bottom:0">
+      <span class="status-dot2"></span>
+      <span>No model trained — go to Dashboard and upload a CSV first</span>
+    </div>
+
+    <div id="analytics-body" style="display:none">
+
+      <!-- KPI row -->
+      <div class="metrics-grid" id="an-kpis" style="margin-bottom:20px"></div>
+
+      <!-- Trend + zone comparison -->
+      <div class="two-col" style="margin-bottom:20px">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Daily occupancy trend</span>
+            <span class="card-badge badge-blue" id="an-trend-badge">LOADING</span>
+          </div>
+          <div style="position:relative;height:180px">
+            <canvas id="an-trend-chart" role="img" aria-label="Daily occupancy bar chart over selected range">Trend chart</canvas>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Zone avg occupancy</span>
+            <span class="card-badge badge-blue">FULL RANGE</span>
+          </div>
+          <div id="an-zone-bars" style="display:flex;flex-direction:column;gap:8px;margin-top:4px"></div>
+        </div>
+      </div>
+
+      <!-- Savings trend + anomalies -->
+      <div class="two-col" style="margin-bottom:20px">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Hourly savings potential — today</span>
+            <span class="card-badge badge-green">OPTIMIZED vs BASELINE</span>
+          </div>
+          <div style="position:relative;height:180px">
+            <canvas id="an-savings-chart" role="img" aria-label="Savings vs baseline line chart">Savings chart</canvas>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Anomaly detection</span>
+            <span class="card-badge badge-orange" id="an-anom-badge">SCANNING</span>
+          </div>
+          <div id="an-anomalies" style="display:flex;flex-direction:column;gap:7px"></div>
+        </div>
+      </div>
+
+      <!-- Cost breakdown + model performance -->
+      <div class="two-col">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Energy cost breakdown — today</span>
+            <span class="card-badge badge-purple">EST. COST</span>
+          </div>
+          <div style="display:flex;gap:20px;align-items:center;margin-top:4px">
+            <canvas id="an-donut" width="110" height="110" style="flex-shrink:0" role="img" aria-label="Donut chart of energy cost">Cost donut</canvas>
+            <div id="an-cost-legend" style="flex:1;display:flex;flex-direction:column;gap:8px"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">ML model accuracy</span>
+            <span class="card-badge badge-green">PER ZONE</span>
+          </div>
+          <div id="an-model-stats" style="display:flex;flex-direction:column;gap:6px"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</main>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+let trained = false;
+let trainedZones = [];
+let zoneStats = {};
+let dashData = {};         // zone -> [{hour, occ, energy...}]
+let currentHour = 9;
+let playing = false;
+let playTimer = null;
+let energyChart = null;
+let forecastChart = null;
+
+const ZONE_CONFIGS = [
+  {name:'Lobby',       capacity:40},
+  {name:'Floor2',      capacity:80},
+  {name:'Floor3',      capacity:80},
+  {name:'ConfRooms',   capacity:30},
+  {name:'Cafeteria',   capacity:60},
+  {name:'ServerRoom',  capacity:4},
+];
+
+function pad(n){return String(n).padStart(2,'0')}
+
+// ── Date display ─────────────────────────────────────────────────────────────
+document.getElementById('date-display').textContent =
+  new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+
+// ── UPLOAD ────────────────────────────────────────────────────────────────────
+const uploadInput = document.getElementById('upload-input');
+const uploadZone  = document.getElementById('upload-zone');
+
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault(); uploadZone.classList.remove('drag');
+  if (e.dataTransfer.files[0]) trainModel(e.dataTransfer.files[0]);
+});
+uploadInput.addEventListener('change', () => { if (uploadInput.files[0]) trainModel(uploadInput.files[0]); });
+
+async function trainModel(file) {
+  setStatus('training', `Training ML models on ${file.name}...`);
+  document.getElementById('upload-title').textContent = file.name;
+  document.getElementById('upload-sub').textContent   = 'training in progress...';
+  uploadZone.classList.add('done');
+
+  const form = new FormData();
+  form.append('file', file);
+
+  try {
+    const res  = await fetch('/api/train', { method:'POST', body: form });
+    const data = await res.json();
+    if (data.error) { setStatus('error', 'Error: ' + data.error); return; }
+
+    trained      = true;
+    trainedZones = data.zones;
+    zoneStats    = data.zone_stats;
+
+    document.getElementById('upload-sub').textContent =
+      `${data.total_samples.toLocaleString()} samples · avg R²=${data.avg_r2} · avg MAE=${data.avg_mae}`;
+
+    setStatus('ready',
+      `Model trained on ${data.zones.length} zones · avg R² = ${data.avg_r2} · avg MAE = ${data.avg_mae}`);
+
+    populateZoneSelect();
+    document.getElementById('stats-nav').style.display = 'flex';
+    renderModelStats();
+    await refreshDashboard();
+    showDashboard();
+
+  } catch(e) {
+    setStatus('error', 'Could not connect to backend. Is app.py running?');
+  }
+}
+
+function setStatus(type, msg) {
+  const bar = document.getElementById('status-bar');
+  bar.className = 'status-bar ' + type;
+  document.getElementById('status-msg').textContent = msg;
+}
+
+function populateZoneSelect() {
+  const sel = document.getElementById('zone-select');
+  sel.innerHTML = '';
+  const known = ZONE_CONFIGS.filter(z => trainedZones.includes(z.name));
+  known.forEach(z => {
+    const o = document.createElement('option');
+    o.value = z.name; o.textContent = z.name;
+    sel.appendChild(o);
+  });
+  if (known.length) document.getElementById('zone-cap').value = known[0].capacity;
+  sel.addEventListener('change', () => {
+    const found = ZONE_CONFIGS.find(z => z.name === sel.value);
+    if (found) document.getElementById('zone-cap').value = found.capacity;
+  });
+}
+
+function showDashboard() {
+  ['alerts-container','metrics-grid','controls-row','main-charts',
+   'forecast-section','bottom-row'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = '';
+  });
+}
+
+// ── REFRESH from API ──────────────────────────────────────────────────────────
+async function refreshDashboard() {
+  if (!trained) return;
+  const dow = +document.getElementById('dow-select').value;
+  const isWeekend = dow >= 5;
+  const zonesPayload = ZONE_CONFIGS.filter(z => trainedZones.includes(z.name));
+
+  try {
+    const res  = await fetch('/api/dashboard', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ day_of_week: dow, is_weekend: isWeekend, zones: zonesPayload })
+    });
+    const data = await res.json();
+    dashData = data.zones;
+    document.getElementById('forecast-zone-label').textContent =
+      Object.keys(dashData)[0] + ' (ML)';
+    render();
+  } catch(e) {
+    setStatus('error', 'Failed to fetch predictions');
+  }
+}
+
+// ── RENDER ────────────────────────────────────────────────────────────────────
+function render() {
+  if (!trained || !Object.keys(dashData).length) return;
+  const h = currentHour;
+  document.getElementById('hour-display').textContent = pad(h)+':00';
+
+  const zones = Object.keys(dashData);
+  const getH = (zone, key) => (dashData[zone] && dashData[zone][h]) ? dashData[zone][h][key] : 0;
+
+  // avg occ (excluding server room)
+  const workZones = zones.filter(z => z !== 'ServerRoom');
+  const avgOcc = workZones.length
+    ? workZones.reduce((s,z)=>s+getH(z,'occupancy_pct'),0)/workZones.length : 0;
+  const totalKwh = zones.reduce((s,z)=>s+getH(z,'total_kwh'),0);
+  const avgSave  = zones.length
+    ? zones.reduce((s,z)=>s+getH(z,'saving_pct'),0)/zones.length : 0;
+  const co2Avoided = zones.reduce((s,z)=>s+getH(z,'co2_avoided_kg'),0);
+  const people = workZones.reduce((s,z)=>s+getH(z,'occupancy_count'),0);
+
+  // METRICS
+  document.getElementById('metrics-grid').innerHTML = `
+    <div class="metric-card">
+      <div class="metric-label">AVG OCCUPANCY</div>
+      <div class="metric-value" style="color:var(--blue)">${Math.round(avgOcc*100)}<span class="metric-unit">%</span></div>
+      <div class="metric-sub">~${people} people</div>
+      <span class="badge" style="background:rgba(56,189,248,.1);color:var(--blue)">ML PREDICTED</span>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">ENERGY USAGE</div>
+      <div class="metric-value" style="color:var(--orange)">${totalKwh.toFixed(1)}<span class="metric-unit"> kWh</span></div>
+      <div class="metric-sub">all zones this hour</div>
+      <span class="badge" style="background:rgba(251,146,60,.1);color:var(--orange)">OPTIMIZED</span>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">ENERGY SAVINGS</div>
+      <div class="metric-value" style="color:var(--green)">${Math.round(avgSave)}<span class="metric-unit">%</span></div>
+      <div class="metric-sub">${(totalKwh*avgSave/100).toFixed(1)} kWh saved</div>
+      <span class="badge" style="background:rgba(74,222,128,.1);color:var(--green)">vs BASELINE</span>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">CO₂ AVOIDED</div>
+      <div class="metric-value" style="color:var(--purple)">${co2Avoided.toFixed(2)}<span class="metric-unit"> kg</span></div>
+      <div class="metric-sub">this hour</div>
+      <span class="badge" style="background:rgba(167,139,250,.1);color:var(--purple)">GREEN OPS</span>
+    </div>
+  `;
+
+  // ALERTS
+  const alerts = [];
+  zones.forEach(z => {
+    const occ = getH(z,'occupancy_pct');
+    const mode = getH(z,'hvac_mode');
+    if (occ > 0.88 && z !== 'ServerRoom') alerts.push({c:'#fb923c',m:`${z}: ${Math.round(occ*100)}% capacity — consider load balancing`});
+    if (occ < 0.05 && z !== 'ServerRoom') alerts.push({c:'#4ade80',m:`${z}: unoccupied → ${mode} mode activated`});
+  });
+  if (!alerts.length) alerts.push({c:'#4ade80',m:'All zones within optimal parameters — ML optimization active'});
+  const ac = document.getElementById('alerts-container');
+  ac.style.display = '';
+  ac.innerHTML = alerts.slice(0,3).map(a=>
+    `<div class="alert-row"><span class="alert-dot" style="background:${a.c}"></span>${a.m}</div>`
+  ).join('');
+
+  // ZONE LIST
+  document.getElementById('zone-list').innerHTML = zones.map(z => {
+    const occ  = getH(z,'occupancy_pct');
+    const mode = getH(z,'hvac_mode');
+    const pct  = Math.round(occ*100);
+    const col  = occ>0.75?'#fb923c':occ>0.40?'#38bdf8':'#4ade80';
+    const modeStyle = {
+      Standby:{bg:'rgba(107,114,128,.15)',col:'#9ca3af'},
+      Eco:    {bg:'rgba(74,222,128,.12)', col:'#4ade80'},
+      Normal: {bg:'rgba(56,189,248,.12)', col:'#38bdf8'},
+      Full:   {bg:'rgba(251,146,60,.15)', col:'#fb923c'},
+    }[mode] || {bg:'rgba(107,114,128,.15)',col:'#9ca3af'};
+    return `<div class="zone-row">
+      <span class="zone-name">${z}</span>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${col}"></div></div>
+      <span class="zone-pct">${pct}%</span>
+      <span class="hvac-pill" style="background:${modeStyle.bg};color:${modeStyle.col}">${mode.toUpperCase()}</span>
+    </div>`;
+  }).join('');
+
+  // ENERGY CHART
+  const hvacD  = zones.map(z=>+getH(z,'hvac_kwh').toFixed(2));
+  const lightD = zones.map(z=>+getH(z,'lighting_kwh').toFixed(2));
+  const equipD = zones.map(z=>+getH(z,'equipment_kwh').toFixed(2));
+  if (!energyChart) {
+    energyChart = new Chart(document.getElementById('energy-chart'),{
+      type:'bar',
+      data:{labels:zones,datasets:[
+        {label:'HVAC',     data:hvacD,  backgroundColor:'#38bdf8',borderWidth:0},
+        {label:'Lighting', data:lightD, backgroundColor:'#fbbf24',borderWidth:0},
+        {label:'Equipment',data:equipD, backgroundColor:'#a78bfa',borderWidth:0},
+      ]},
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.dataset.label+': '+c.raw.toFixed(2)+' kWh'}}},
+        scales:{
+          x:{stacked:true,ticks:{color:'#6b7280',font:{size:10,family:"'DM Mono',monospace"}},grid:{display:false},border:{color:'rgba(255,255,255,.07)'}},
+          y:{stacked:true,ticks:{color:'#6b7280',font:{size:10,family:"'DM Mono',monospace"}},grid:{color:'rgba(255,255,255,.05)'},border:{display:false}}
+        }
+      }
+    });
+    document.getElementById('energy-legend').innerHTML =
+      [['#38bdf8','HVAC'],['#fbbf24','Lighting'],['#a78bfa','Equipment']]
+      .map(([c,l])=>`<div class="legend-item"><span class="legend-swatch" style="background:${c}"></span>${l}</div>`).join('');
+  } else {
+    energyChart.data.datasets[0].data = hvacD;
+    energyChart.data.datasets[1].data = lightD;
+    energyChart.data.datasets[2].data = equipD;
+    energyChart.update('none');
+  }
+
+  // FORECAST CHART (use first zone)
+  const fZone = Object.keys(dashData)[0];
+  const occLine  = Array.from({length:24},(_,hh)=>Math.round((dashData[fZone]?.[hh]?.occupancy_pct||0)*100));
+  const saveLine = Array.from({length:24},(_,hh)=>Math.round(dashData[fZone]?.[hh]?.saving_pct||0));
+
+  const nowPlugin = {id:'nowLine',afterDraw(chart){
+    const {ctx,scales:{x,y}}=chart;
+    const xp=x.getPixelForValue(h);
+    ctx.save();ctx.strokeStyle='rgba(251,146,60,.7)';ctx.lineWidth=1.5;ctx.setLineDash([4,4]);
+    ctx.beginPath();ctx.moveTo(xp,y.top);ctx.lineTo(xp,y.bottom);ctx.stroke();
+    ctx.fillStyle='#fb923c';ctx.font="10px 'DM Mono',monospace";ctx.fillText('NOW',xp+4,y.top+12);
+    ctx.restore();
+  }};
+
+  if (!forecastChart) {
+    forecastChart = new Chart(document.getElementById('forecast-chart'),{
+      type:'line', plugins:[nowPlugin],
+      data:{
+        labels:Array.from({length:24},(_,i)=>pad(i)+':00'),
+        datasets:[
+          {label:'Occupancy %',data:occLine, borderColor:'#38bdf8',backgroundColor:'rgba(56,189,248,.06)',borderWidth:2,pointRadius:0,fill:true,tension:.4},
+          {label:'Savings %',  data:saveLine,borderColor:'#4ade80',backgroundColor:'rgba(74,222,128,.06)',borderWidth:2,pointRadius:0,fill:true,tension:.4,borderDash:[6,3]},
+        ]
+      },
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false}},
+        scales:{
+          x:{ticks:{color:'#6b7280',font:{size:10,family:"'DM Mono',monospace"},maxTicksLimit:12},grid:{display:false},border:{color:'rgba(255,255,255,.07)'}},
+          y:{min:0,max:100,ticks:{color:'#6b7280',font:{size:10,family:"'DM Mono',monospace"},callback:v=>v+'%'},grid:{color:'rgba(255,255,255,.05)'},border:{display:false}}
+        }
+      }
+    });
+  } else {
+    forecastChart.data.datasets[0].data = occLine;
+    forecastChart.data.datasets[1].data = saveLine;
+    forecastChart.update('none');
+  }
+
+  // SAVINGS
+  const cumSave = Array.from({length:h+1},(_,hh)=>
+    zones.reduce((s,z)=>{
+      const kwh=dashData[z]?.[hh]?.total_kwh||0;
+      const sp=dashData[z]?.[hh]?.saving_pct||0;
+      return s+kwh*sp/100;
+    },0)
+  ).reduce((a,b)=>a+b,0);
+
+  document.getElementById('savings-breakdown').innerHTML = [
+    {label:'kWh saved today',  val:cumSave.toFixed(1)+' kWh', col:'#4ade80', pct:Math.min(100,cumSave/5)},
+    {label:'Cost saved (est)', val:'₹'+Math.round(cumSave*8), col:'#fbbf24', pct:Math.min(100,cumSave/5)},
+    {label:'CO₂ avoided today',val:(cumSave*0.233).toFixed(2)+' kg', col:'#a78bfa', pct:Math.min(100,cumSave/5)},
+  ].map(it=>`<div>
+    <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+      <span style="font-size:11px;color:var(--muted);font-family:var(--mono)">${it.label}</span>
+      <span style="font-size:12px;font-weight:500;color:${it.col};font-family:var(--mono)">${it.val}</span>
+    </div>
+    <div style="height:4px;background:rgba(255,255,255,.06);border-radius:2px">
+      <div style="height:4px;border-radius:2px;background:${it.col};width:${it.pct}%;transition:width .5s"></div>
+    </div>
+  </div>`).join('');
+}
+
+function renderModelStats() {
+  document.getElementById('model-stats').innerHTML = Object.entries(zoneStats)
+    .map(([zone, s]) => `
+      <div class="stat-card">
+        <div class="stat-zone">${zone}</div>
+        <div class="stat-vals">
+          <span class="stat-val" style="color:var(--green)">R² ${s.r2}</span>
+          <span class="stat-val" style="color:var(--muted)">MAE ${s.mae}</span>
+        </div>
+        <div style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-top:3px">${s.samples} samples</div>
+      </div>`
+    ).join('');
+}
+
+// ── CONTROLS ──────────────────────────────────────────────────────────────────
+document.getElementById('hour-slider').addEventListener('input', e => {
+  currentHour = +e.target.value; render();
+});
+document.getElementById('dow-select').addEventListener('change', refreshDashboard);
+
+function togglePlay() {
+  playing = !playing;
+  const btn = document.getElementById('play-btn');
+  if (playing) {
+    btn.textContent = '⏸ PAUSE';
+    playTimer = setInterval(()=>{ currentHour=(currentHour+1)%24; document.getElementById('hour-slider').value=currentHour; render(); }, 900);
+  } else {
+    btn.textContent = '▶ PLAY';
+    clearInterval(playTimer);
+  }
+}
+
+// ── PAGE SWITCHING ────────────────────────────────────────────────────────────
+let currentPage = 'dashboard';
+let anTrendChart = null, anSavingsChart = null, anDonutChart = null;
+
+function showPage(page) {
+  currentPage = page;
+  document.getElementById('page-analytics').style.display = page === 'analytics' ? 'flex' : 'none';
+  document.querySelector('.main:not(#page-analytics)').style.display = page === 'dashboard' ? 'flex' : 'none';
+  document.getElementById('nav-dashboard').classList.toggle('active', page === 'dashboard');
+  document.getElementById('nav-analytics').classList.toggle('active', page === 'analytics');
+  if (page === 'analytics') {
+    document.getElementById('analytics-date').textContent = new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+    loadAnalytics();
+  }
+}
+
+// ── ANALYTICS LOAD ────────────────────────────────────────────────────────────
+async function loadAnalytics() {
+  if (!trained) {
+    document.getElementById('analytics-no-model').style.display = 'flex';
+    document.getElementById('analytics-body').style.display = 'none';
+    return;
+  }
+  document.getElementById('analytics-no-model').style.display = 'none';
+  document.getElementById('analytics-body').style.display = 'block';
+
+  const days = +document.getElementById('analytics-range').value;
+  const dow = new Date().getDay() || 7;
+
+  // Build synthetic historical data from the model (simulate days)
+  const history = [];
+  for (let d = days - 1; d >= 0; d--) {
+    const dayDow = ((dow - d - 1) + 14) % 7;
+    const isWeekend = dayDow >= 5;
+    let dayOcc = 0, dayKwh = 0, daySave = 0;
+    for (let h = 0; h < 24; h++) {
+      // Use first trained zone as representative
+      const rep = trainedZones.filter(z => z !== 'ServerRoom')[0];
+      if (!rep || !dashData[rep]) continue;
+      const slot = dashData[rep][h];
+      if (!slot) continue;
+      dayOcc  += slot.occupancy_pct;
+      dayKwh  += slot.total_kwh;
+      daySave += slot.saving_pct;
+    }
+    history.push({
+      day: d,
+      label: d === 0 ? 'Today' : d === 1 ? 'Yesterday' : `-${d}d`,
+      occ: Math.round(dayOcc / 24 * 100),
+      kwh: +dayKwh.toFixed(1),
+      save: Math.round(daySave / 24),
+    });
+  }
+
+  // ── KPIs
+  const avgOccAll = Math.round(history.reduce((s,d)=>s+d.occ,0)/history.length);
+  const totalKwhAll = history.reduce((s,d)=>s+d.kwh,0).toFixed(0);
+  const avgSaveAll = Math.round(history.reduce((s,d)=>s+d.save,0)/history.length);
+  const co2All = (history.reduce((s,d)=>s+d.kwh,0)*0.233*avgSaveAll/100).toFixed(1);
+
+  document.getElementById('an-kpis').innerHTML = `
+    <div class="metric-card"><div class="metric-label">AVG OCCUPANCY</div><div class="metric-value" style="color:var(--blue)">${avgOccAll}<span class="metric-unit">%</span></div><div class="metric-sub">over ${days} days</div></div>
+    <div class="metric-card"><div class="metric-label">TOTAL ENERGY</div><div class="metric-value" style="color:var(--orange)">${Number(totalKwhAll).toLocaleString()}<span class="metric-unit"> kWh</span></div><div class="metric-sub">${days}-day total</div></div>
+    <div class="metric-card"><div class="metric-label">AVG SAVINGS</div><div class="metric-value" style="color:var(--green)">${avgSaveAll}<span class="metric-unit">%</span></div><div class="metric-sub">vs unoptimized baseline</div></div>
+    <div class="metric-card"><div class="metric-label">CO₂ AVOIDED</div><div class="metric-value" style="color:var(--purple)">${co2All}<span class="metric-unit"> kg</span></div><div class="metric-sub">${days}-day total</div></div>
+  `;
+
+  // ── TREND CHART
+  document.getElementById('an-trend-badge').textContent = `${days}D TREND`;
+  const tLabels = history.map(d => d.label);
+  const tData   = history.map(d => d.occ);
+  const tColors = tData.map(v => v > 70 ? '#fb923c' : v > 45 ? '#38bdf8' : '#4ade80');
+  if (!anTrendChart) {
+    anTrendChart = new Chart(document.getElementById('an-trend-chart'), {
+      type:'bar',
+      data:{ labels:tLabels, datasets:[{ data:tData, backgroundColor:tColors, borderWidth:0, borderRadius:3 }] },
+      options:{ responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>c.raw+'% occupancy'}} },
+        scales:{
+          x:{ ticks:{color:'#6b7280',font:{size:10,family:"'DM Mono',monospace"},maxTicksLimit:10}, grid:{display:false}, border:{color:'rgba(255,255,255,.07)'} },
+          y:{ min:0, max:100, ticks:{color:'#6b7280',font:{size:10,family:"'DM Mono',monospace"},callback:v=>v+'%'}, grid:{color:'rgba(255,255,255,.05)'}, border:{display:false} }
+        }
+      }
+    });
+  } else {
+    anTrendChart.data.labels = tLabels;
+    anTrendChart.data.datasets[0].data = tData;
+    anTrendChart.data.datasets[0].backgroundColor = tColors;
+    anTrendChart.update('none');
+  }
+
+  // ── ZONE BARS
+  const workZones = trainedZones.filter(z => z !== 'ServerRoom');
+  const zoneAvgs = workZones.map(z => {
+    if (!dashData[z]) return { name:z, avg:0 };
+    const avg = Math.round(dashData[z].reduce((s,h)=>s+h.occupancy_pct,0)/24*100);
+    return { name:z, avg };
+  }).sort((a,b) => b.avg - a.avg);
+
+  document.getElementById('an-zone-bars').innerHTML = zoneAvgs.map(z => {
+    const col = z.avg>75?'#fb923c':z.avg>45?'#38bdf8':'#4ade80';
+    return `<div style="display:flex;align-items:center;gap:8px;font-size:11px">
+      <span style="color:#6b7280;font-family:var(--font-mono);width:80px;flex-shrink:0">${z.name}</span>
+      <div style="flex:1;height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden">
+        <div style="height:5px;border-radius:3px;background:${col};width:${z.avg}%;transition:width .5s"></div>
+      </div>
+      <span style="color:#6b7280;font-family:var(--font-mono);width:32px;text-align:right">${z.avg}%</span>
+    </div>`;
+  }).join('');
+
+  // ── SAVINGS CHART (today's hourly)
+  const todayZone = workZones[0];
+  const savingsLine = dashData[todayZone]
+    ? dashData[todayZone].map(h => Math.round(h.saving_pct))
+    : Array(24).fill(0);
+  const baselineLine = Array(24).fill(0);
+  const hours24 = Array.from({length:24},(_,i)=>String(i).padStart(2,'0')+':00');
+
+  if (!anSavingsChart) {
+    anSavingsChart = new Chart(document.getElementById('an-savings-chart'), {
+      type:'line',
+      data:{ labels:hours24, datasets:[
+        { label:'Savings %', data:savingsLine, borderColor:'#4ade80', backgroundColor:'rgba(74,222,128,.08)', borderWidth:2, pointRadius:0, fill:true, tension:.4 },
+        { label:'Baseline', data:Array(24).fill(0), borderColor:'rgba(255,255,255,.15)', borderWidth:1, pointRadius:0, borderDash:[4,4] },
+      ]},
+      options:{ responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>c.raw+'%'}} },
+        scales:{
+          x:{ ticks:{color:'#6b7280',font:{size:10,family:"'DM Mono',monospace"},maxTicksLimit:8}, grid:{display:false}, border:{color:'rgba(255,255,255,.07)'} },
+          y:{ min:0, max:100, ticks:{color:'#6b7280',font:{size:10,family:"'DM Mono',monospace"},callback:v=>v+'%'}, grid:{color:'rgba(255,255,255,.05)'}, border:{display:false} }
+        }
+      }
+    });
+  } else {
+    anSavingsChart.data.datasets[0].data = savingsLine;
+    anSavingsChart.update('none');
+  }
+
+  // ── ANOMALIES
+  const anomalies = [];
+  trainedZones.forEach(zone => {
+    if (!dashData[zone]) return;
+    dashData[zone].forEach((slot, h) => {
+      const occ = slot.occupancy_pct;
+      if (occ > 0.88 && zone !== 'ServerRoom')
+        anomalies.push({ color:'#f87171', zone, msg:`${Math.round(occ*100)}% capacity at ${String(h).padStart(2,'0')}:00`, sev:'HIGH' });
+      if (occ < 0.05 && zone !== 'ServerRoom' && slot.hvac_mode !== 'Standby')
+        anomalies.push({ color:'#fbbf24', zone, msg:`Unoccupied but HVAC active at ${String(h).padStart(2,'0')}:00`, sev:'WARN' });
+      if (slot.saving_pct < 10 && occ < 0.3)
+        anomalies.push({ color:'#fb923c', zone, msg:`Low savings at ${String(h).padStart(2,'0')}:00 despite low occupancy`, sev:'INFO' });
+    });
+  });
+  const unique = anomalies.slice(0, 5);
+  document.getElementById('an-anom-badge').textContent = `${unique.length} FLAG${unique.length!==1?'S':''}`;
+  document.getElementById('an-anomalies').innerHTML = unique.length
+    ? unique.map(a=>`<div style="display:flex;align-items:center;gap:9px;padding:8px 10px;background:#1a1e28;border-radius:8px">
+        <span style="width:7px;height:7px;border-radius:50%;background:${a.color};flex-shrink:0"></span>
+        <span style="font-size:11px;font-family:var(--font-mono);color:#e8eaf0;min-width:76px">${a.zone}</span>
+        <span style="font-size:11px;font-family:var(--font-mono);color:#6b7280;flex:1">${a.msg}</span>
+        <span style="font-size:10px;font-family:var(--font-mono);padding:2px 6px;border-radius:4px;background:rgba(255,255,255,.05);color:#6b7280">${a.sev}</span>
+      </div>`).join('')
+    : `<div style="font-size:12px;font-family:var(--font-mono);color:#4ade80;padding:12px 0">All zones within normal parameters</div>`;
+
+  // ── COST DONUT
+  const todaySlots = dashData[workZones[0]] || [];
+  const hvacTotal  = todaySlots.reduce((s,h)=>s+h.hvac_kwh,0);
+  const lightTotal = todaySlots.reduce((s,h)=>s+h.lighting_kwh,0);
+  const equipTotal = todaySlots.reduce((s,h)=>s+h.equipment_kwh,0);
+  const rate = 8;
+  const costs = [hvacTotal*rate, lightTotal*rate, equipTotal*rate];
+  const labels3 = ['HVAC','Lighting','Equipment'];
+  const colors3  = ['#38bdf8','#fbbf24','#a78bfa'];
+
+  if (!anDonutChart) {
+    anDonutChart = new Chart(document.getElementById('an-donut'), {
+      type:'doughnut',
+      data:{ labels:labels3, datasets:[{ data:costs, backgroundColor:colors3, borderWidth:0 }] },
+      options:{ responsive:false, cutout:'65%',
+        plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>'₹'+Math.round(c.raw)}} }
+      }
+    });
+  } else {
+    anDonutChart.data.datasets[0].data = costs;
+    anDonutChart.update('none');
+  }
+  const savedCost = costs.reduce((a,b)=>a+b,0) * avgSaveAll/100;
+  document.getElementById('an-cost-legend').innerHTML = [
+    ...labels3.map((l,i)=>[l,colors3[i],Math.round(costs[i])]),
+    ['Saved','#4ade80', -Math.round(savedCost)]
+  ].map(([l,c,v])=>`<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px">
+    <span style="display:flex;align-items:center;gap:7px;color:#9ca3af;font-family:var(--font-mono)">
+      <span style="width:8px;height:8px;border-radius:2px;background:${c};flex-shrink:0"></span>${l}
+    </span>
+    <span style="font-family:var(--font-mono);color:${l==='Saved'?'#4ade80':'#e8eaf0'}">₹${Math.abs(v).toLocaleString()}</span>
+  </div>`).join('');
+
+  // ── MODEL STATS
+  document.getElementById('an-model-stats').innerHTML = Object.entries(zoneStats).map(([zone,s])=>{
+    const r2col = s.r2 > 0.95 ? '#4ade80' : s.r2 > 0.85 ? '#fbbf24' : '#f87171';
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#1a1e28;border-radius:8px">
+      <span style="font-size:11px;font-family:var(--font-mono);color:#9ca3af">${zone}</span>
+      <div style="display:flex;gap:14px">
+        <span style="font-size:11px;font-family:var(--font-mono);color:${r2col}">R² ${s.r2}</span>
+        <span style="font-size:11px;font-family:var(--font-mono);color:#6b7280">MAE ${s.mae}</span>
+        <span style="font-size:11px;font-family:var(--font-mono);color:#6b7280">${s.samples.toLocaleString()} rows</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── CHECK SERVER ON LOAD ──────────────────────────────────────────────────────
+(async()=>{
+  try {
+    const r = await fetch('/api/status');
+    const d = await r.json();
+    if (d.trained) {
+      trained = true; trainedZones = d.zones; zoneStats = d.stats||{};
+      setStatus('ready', `Model already loaded · ${d.zones.length} zones`);
+      populateZoneSelect(); renderModelStats();
+      await refreshDashboard(); showDashboard();
+    }
+  } catch(e) {}
+})();
+</script>
+</body>
+</html>
